@@ -9,18 +9,18 @@
 
 ## Introduction
 
-We already know that we can build our SQL tables such that they associate with
-one another via **primary keys** and **foreign keys**. We can also use
-SQLAlchemy to access data across different tables by establishing relationships
-in code, without having to write tons of code ourselves, following the idea of
-**convention over configuration**.
+We already know we can build our SQL tables so they associate with
+each other by using **primary keys** and **foreign keys**. We can also use
+SQLAlchemy to access data across different tables by setting up relationships
+in code. That way we don't have to write tons of code ourselves, following 
+the idea of **convention over configuration**.
 
-SQLAlchemy relationships make it easy to establish relationships between our
-models, without having to write a ton of SQL ourselves. Sounds great, right? Now
-that we have you totally hooked, let's take a look at how we use these SQLAlchemy
-relationships.
+SQLAlchemy relationships make it easy to set up relationships between our
+database models in a few lines of python. Instead of needing to write 3-4 times 
+as many lines SQL. Sounds great, right? Now that we have you totally hooked, 
+let's take a look at how we use these SQLAlchemy relationships.
 
-Before we begin, run `pipenv install; pipenv shell` to generate and enter
+> Before we begin, run `pipenv install; pipenv shell` to generate and enter
 your virtual environment. This will install `sqlalchemy`, `alembic`, `faker`,
 `pytest`, and `ipdb`.
 
@@ -28,16 +28,19 @@ your virtual environment. This will install `sqlalchemy`, `alembic`, `faker`,
 
 ## How do we use SQLAlchemy Relationships?
 
-SQLAlchemy ORM uses a `ForeignKey` column to constrain and join data models,
-as well as a `relationship()` method that provides a property to one model
-that can be used to access its related model. SQLAlchemy ORM also uses a
-`backref()` method to create the property in the related model. This makes the
-syntax for accessing related models and creating join tables very simple.
+SQLAlchemy Object Relational Mapper (ORM) uses:
+
+- a `ForeignKey` column to constrain and join data models
+
+- a `relationship()` method that gives a property to one model that can be used to access its related model.
+
+- a `backref()` method to create the property in the related model. 
+
+These 3 pieces make the syntax for accessing related models and creating join tables simpler.
 
 ### One-to-Many Example
 
-Here is some code that you might use to create a relationship between an order
-and a customer:
+Here is a code example that creates a relationship between an order and a customer:
 
 ```py
 # example
@@ -47,39 +50,66 @@ class Customer(Base):
 
     id = Column(Integer(), primary_key=True)
 
+    # One customer can have many orders
+
+    # the relationship() method sets an 'orders' property 
+    # on the Customer data model and creates one side of the relationship
+    
     orders = relationship('Order', backref='customer')
+
+    # the backref value sets up the reverse relationship on 
+    # the Order data model, so we can call order.customer
 
 
 class Order(Base):
     __tablename__ = 'orders'
 
     id = Column(Integer(), primary_key=True)
+
+    # One order can have only one customer
     customer_id = Column(Integer(), ForeignKey('customers.id'))
+
+    # the ForeignKey() method creates the other side of the relationship
+    # and shows that the customer_id column value matches a customer.id value
 ```
 
+
 We can see that the `Customer` model contains an `orders` class attribute
-that is set by the `relationship()` method. The `backref()` method therein
-sets the reverse many-to-one relationship that **ref**ers **back** from the
-`Order` model. Inclusion of a foreign key for a `Customer` instance in the
-`Order` model is all that is needed to complete this relationship.
+set by the `relationship()` method. The `backref()` method then creates the
+reverse many-to-one relationship that **ref**ers **back** from the
+`Order` model. Finally, we say that the `Order` model has a foreign key
+which refers to a specific `Customer` instance. These 3 short, but critical
+lines of code are all that is needed to properly complete this relationship.
 
-The `backref` goes into the **"one"** of the "one-to-many" relationship, as the
-"one" is a single model object and does not need any additional arguments to
-tell SQLAlchemy that it is something more specific like a list or dictionary.
+The `backref` value is placed in the data model that is on the **"one"** side of the "one-to-many" relationship, in this case the `Customer` model. 
 
-(If you don't think you'll need the many-to-one relationship, you can
-leave out the `backref`.)
+```py
+class Customer(Base):
+    __tablename__ = 'customers'
+    ...
+
+    # notice that the backref value is 'customer' and not 'customers'
+    orders = relationship('Order', backref='customer')
+```
+
+This is because the `backref` value lets use access the related model as a
+property of the model that is on the "many" side of the relationship. In this
+case, we can access the customer for a specific order by calling `order.customer`.
 
 ### One-to-One Example
 
-One-to-one relationships aren't _tremendously_ common, but they are simple
-to build in SQLAlchemy ORM if you need to!
+One-to-one relationships are much less common, but they are simple to build in
+SQLAlchemy ORM if you need to! 
 
-Let's say that orders have a lot of important associated data, but only two
-or three columns' worth of regularly-queried data. In designing a database to
-return data quickly, it makes the most sense for us to separate the important
-attributes into a smaller table and create a one-to-one relationship with the
-beefier database for metadata.
+The syntax for a one-to-one relationship is nearly identical to that of a one-to-many relationship. First, let's explain when we might want to use a one-to-one relationship.
+
+Let's say that an order has a lot of associated data, but two or three of those
+columns' are used for search queries in our codebase 10 times more often than the other columns. 
+
+When we design a database, we want to make it return data as quickly as possible.
+In the example above, we can speed up our searches by only including the 2-3 columns used most frequently into our 'orders' database table and model. The rest of the data can be stored in a larger, less frequently searched table, 'orders_metadata'.
+
+This means the table we search the most is much smaller, maybe having less than 4 columns. Each row in our smaller 'orders' table will have a one-to-one relationship with a row in our larger 'orders_metadata' table.
 
 ```py
 # example
@@ -93,22 +123,39 @@ class OrderMetadata(Base):
     __tablename__ = 'orders_metadata'
 
     id = Column(Integer(), primary_key=True)
+
+    # One order can have only one order_metadata
     order_id = Column(Integer(), ForeignKey("orders.id"))
     
     order = relationship('Order',
         backref=backref('order_metadata', uselist=False))
 ```
 
-The syntax for a one-to-one relationship is identical to that of a one-to-many
-relationship, with the exception that the `backref()` method takes
-`uselist=False` as an optional second parameter. This means exactly what it
-sounds like: the `Order` model refers back to the `OrderMetadata` model via a
-property `order_metadata` that is not a list. (If it were a list, it would be
-many!)
+Again, the syntax for a one-to-one relationship is nearly identical to that of
+a one-to-many relationship. 
+
+The key difference is the syntax for the `backref()` method.
+
+```py
+class OrderMetadata(Base):
+    __tablename__ = 'orders_metadata'
+
+    ...
+
+    order = relationship('Order',
+        backref=backref('order_metadata', uselist=False))
+    
+```
+
+The backref value calls the `backref()` method from SQLAlchemy passing in the
+'order_metadata' value as the first parameter and `uselist=False` as the second 
+parameter. `uselist=False` means that the 'order' property will not be a list
+because it is a one-to-one relationship. If `uselist=True`, that would mean that
+the 'order' property would be a list, which is a one-to-many relationship.
 
 ***
 
-## Overview
+## Code-a-Long: Overview
 
 In this lesson, we'll be building out a **one-to-many** relationship between two
 models: **games** and **reviews**. We'll set up our database so that a game
